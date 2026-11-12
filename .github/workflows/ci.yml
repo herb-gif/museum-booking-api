@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # PostgreSQL runs as a service container next to the job.
+    # The concurrency test needs it, because SQLite does not behave the same
+    # way under concurrent writes.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: museum
+          POSTGRES_PASSWORD: museum
+          POSTGRES_DB: museum
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U museum -d museum"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Setting DATABASE_URL to a postgresql URL turns on test_concurrency.py.
+      # Without it that test is skipped and CI would still pass.
+      DATABASE_URL: postgresql+psycopg2://museum:museum@localhost:5432/museum
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # -rs prints the reason for any skipped test, so a silent skip is visible in the log.
+      - name: Run tests
+        run: pytest -v -rs
