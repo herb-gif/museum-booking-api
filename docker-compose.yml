@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: museum
+      POSTGRES_PASSWORD: museum
+      POSTGRES_DB: museum
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      # "db" is the service name, which Compose resolves as a hostname on its network.
+      DATABASE_URL: postgresql+psycopg2://museum:museum@db:5432/museum
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
