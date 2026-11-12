@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from sqlalchemy import update
 
 from app import db
 from app.models import Booking, Museum, TicketType
@@ -60,18 +61,27 @@ def create_booking():
     if ticket is None:
         return jsonify(error="ticket type not found"), 404
 
-    # 2) Business rule: are there enough tickets left?
-    # 409 Conflict: the request is valid but conflicts with the current state.
-    if quantity > ticket.available:
+    # 2) Check and reserve in ONE atomic SQL statement.
+    # The WHERE clause re-checks capacity inside the database, so two requests
+    # cannot both claim the same last ticket.
+    result = db.session.execute(
+        update(TicketType)
+        .where(
+            TicketType.id == ticket_type_id,
+            TicketType.capacity - TicketType.sold >= quantity,
+        )
+        .values(sold=TicketType.sold + quantity)
+    )
+    if result.rowcount == 0:
+        # Not enough tickets: undo the transaction and reload the current count.
+        db.session.rollback()
+        db.session.refresh(ticket)
         return (
             jsonify(error="not enough tickets available", available=ticket.available),
             409,
         )
 
-    # 3) Persist: increment sold count and create the booking.
-    # Note: two simultaneous requests can both pass the check above and oversell.
-    # The planned fix is SELECT ... FOR UPDATE (row locking).
-    ticket.sold += quantity
+    # 3) Record the booking in the same transaction.
     booking = Booking(
         ticket_type_id=ticket.id,
         customer_email=email,
