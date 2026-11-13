@@ -52,8 +52,11 @@ app/
   models.py     # Museum, TicketType, Booking tables
   routes.py     # API endpoints
 tests/
-  conftest.py   # Test app and sample data
-  test_api.py   # Endpoint tests
+  conftest.py         # Test app and sample data
+  test_api.py         # Endpoint tests
+  test_concurrency.py # Parallel bookings against PostgreSQL (skipped without DATABASE_URL)
+.github/workflows/
+  ci.yml        # GitHub Actions: runs pytest against a PostgreSQL service container
 ```
 
 ## Booking flow
@@ -63,8 +66,10 @@ tests/
 3. Availability is checked. If there are not enough tickets, the API returns `409 Conflict`.
 4. If enough tickets remain, `sold` is incremented and a `Booking` record is created.
 
+The availability check and the `sold` update run as one conditional `UPDATE` statement, so two concurrent requests cannot both claim the last ticket.
+
 ## Known limitations and next steps
 
-- **Concurrency:** If two requests try to buy the last ticket at the same time, both may succeed (overselling). Planned fix: row locking with `SELECT ... FOR UPDATE` or a conditional update.
+- **Concurrency test needs PostgreSQL:** `tests/test_concurrency.py` is skipped unless `DATABASE_URL` points to PostgreSQL. It drops and recreates all tables, so only point it at a development or test database. CI runs it against a PostgreSQL service container.
 - **Migrations:** Tables are currently created with `create_all`. Planned: move to Flask-Migrate.
 - **Authentication:** The booking endpoint is currently public.
